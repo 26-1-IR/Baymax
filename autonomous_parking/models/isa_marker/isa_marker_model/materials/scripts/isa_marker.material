@@ -1,0 +1,13 @@
+material ISAMarker/Diffuse
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture isa_marker.png
+      }
+    }
+  }
+}

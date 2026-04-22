@@ -1,0 +1,265 @@
+# Parking Lot Slot Metadata
+# 16 slots: 12 general + 4 handicapped
+# Occupied: A4, A7, B3, B6
+# Layout: 2 rows (A=north, B=south), 8 slots each
+# Slot dimensions: 2.8m (width) x 4.5m (depth)
+# Lane width: 6.0m (y: -3.0 to 3.0)
+
+parking_lot:
+  name: "autonomous_parking_lot"
+  dimensions:
+    width: 22.4   # x-axis (meters)
+    height: 17.0  # y-axis (meters)
+  lane:
+    y_min: -3.0
+    y_max: 3.0
+    width: 6.0
+
+# Observation points for the robot
+observation_points:
+  - id: "obs_1"
+    x: -5.0
+    y: 0.0
+    yaw: 1.5708   # facing north (Row A)
+    description: "Left side observation - covers A1~A4, B1~B4"
+  - id: "obs_2"
+    x: 5.0
+    y: 0.0
+    yaw: 1.5708   # facing north (Row A)
+    description: "Right side observation - covers A5~A8, B5~B8"
+
+# Robot spawn pose
+robot_spawn:
+  x: -12.0
+  y: 0.0
+  yaw: 0.0  # facing east (into parking lot)
+
+# Slot definitions
+slots:
+  # === Row A (North side, y=4.0~8.5) ===
+  # Slots face south (yaw = -pi/2)
+  - id: "A1"
+    type: "handicapped"
+    center_x: -9.8
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -11.2
+      x_max: -8.4
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  - id: "A2"
+    type: "handicapped"
+    center_x: -7.0
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -8.4
+      x_max: -5.6
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  - id: "A3"
+    type: "general"
+    center_x: -4.2
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -5.6
+      x_max: -2.8
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  - id: "A4"
+    type: "general"
+    center_x: -1.4
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -2.8
+      x_max: 0.0
+      y_min: 4.0
+      y_max: 8.5
+    occupied: true
+
+  - id: "A5"
+    type: "general"
+    center_x: 1.4
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 0.0
+      x_max: 2.8
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  - id: "A6"
+    type: "general"
+    center_x: 4.2
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 2.8
+      x_max: 5.6
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  - id: "A7"
+    type: "general"
+    center_x: 7.0
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 5.6
+      x_max: 8.4
+      y_min: 4.0
+      y_max: 8.5
+    occupied: true
+
+  - id: "A8"
+    type: "general"
+    center_x: 9.8
+    center_y: 6.25
+    yaw: -1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 8.4
+      x_max: 11.2
+      y_min: 4.0
+      y_max: 8.5
+    occupied: false
+
+  # === Row B (South side, y=-4.0~-8.5) ===
+  # Slots face north (yaw = pi/2)
+  - id: "B1"
+    type: "handicapped"
+    center_x: -9.8
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -11.2
+      x_max: -8.4
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
+
+  - id: "B2"
+    type: "handicapped"
+    center_x: -7.0
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -8.4
+      x_max: -5.6
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
+
+  - id: "B3"
+    type: "general"
+    center_x: -4.2
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -5.6
+      x_max: -2.8
+      y_min: -8.5
+      y_max: -4.0
+    occupied: true
+
+  - id: "B4"
+    type: "general"
+    center_x: -1.4
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: -2.8
+      x_max: 0.0
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
+
+  - id: "B5"
+    type: "general"
+    center_x: 1.4
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 0.0
+      x_max: 2.8
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
+
+  - id: "B6"
+    type: "general"
+    center_x: 4.2
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 2.8
+      x_max: 5.6
+      y_min: -8.5
+      y_max: -4.0
+    occupied: true
+
+  - id: "B7"
+    type: "general"
+    center_x: 7.0
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 5.6
+      x_max: 8.4
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
+
+  - id: "B8"
+    type: "general"
+    center_x: 9.8
+    center_y: -6.25
+    yaw: 1.5708
+    width: 2.8
+    depth: 4.5
+    roi:
+      x_min: 8.4
+      x_max: 11.2
+      y_min: -8.5
+      y_max: -4.0
+    occupied: false
