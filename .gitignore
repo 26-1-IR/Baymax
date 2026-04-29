@@ -25,3 +25,6 @@ datasets/
 *.swp
 *~
 .DS_Store
+
+# Project documentation
+CLAUDE.md

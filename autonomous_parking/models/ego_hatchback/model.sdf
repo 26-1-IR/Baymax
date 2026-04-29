@@ -224,6 +224,90 @@
       <parent>chassis</parent><child>camera_link</child>
     </joint>
 
+    <!-- ============== LEFT SIDE CAMERA (Row A / 북쪽 슬롯) ============== -->
+    <!-- Mounted on the left flank (chassis +y = north when driving east).
+         yaw=+π/2  → optical axis faces chassis +y (left).
+         pitch=0.15 → ~9° downward tilt to capture slot markers on the ground. -->
+    <link name="camera_left_link">
+      <pose>0 0.95 1.1 0 0.15 1.5708</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="v">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <material><ambient>0.1 0.7 0.1 1</ambient><diffuse>0.1 0.7 0.1 1</diffuse></material>
+      </visual>
+      <sensor name="camera_left" type="camera">
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <camera>
+          <horizontal_fov>1.5707963</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip><near>0.1</near><far>20.0</far></clip>
+          <noise><type>gaussian</type><mean>0.0</mean><stddev>0.007</stddev></noise>
+        </camera>
+        <plugin name="camera_left_plugin" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/ego</namespace>
+            <remapping>image_raw:=camera_left/image_raw</remapping>
+            <remapping>camera_info:=camera_left/camera_info</remapping>
+          </ros>
+          <frame_name>camera_left_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <joint name="camera_left_joint" type="fixed">
+      <parent>chassis</parent><child>camera_left_link</child>
+    </joint>
+
+    <!-- ============== RIGHT SIDE CAMERA (Row B / 남쪽 슬롯) ============== -->
+    <!-- Mounted on the right flank (chassis -y = south when driving east).
+         yaw=-π/2  → optical axis faces chassis -y (right).
+         pitch=0.15 → ~9° downward tilt. -->
+    <link name="camera_right_link">
+      <pose>0 -0.95 1.1 0 0.15 -1.5708</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia><ixx>0.001</ixx><iyy>0.001</iyy><izz>0.001</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+      </inertial>
+      <visual name="v">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <material><ambient>0.7 0.1 0.1 1</ambient><diffuse>0.7 0.1 0.1 1</diffuse></material>
+      </visual>
+      <sensor name="camera_right" type="camera">
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <camera>
+          <horizontal_fov>1.5707963</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip><near>0.1</near><far>20.0</far></clip>
+          <noise><type>gaussian</type><mean>0.0</mean><stddev>0.007</stddev></noise>
+        </camera>
+        <plugin name="camera_right_plugin" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/ego</namespace>
+            <remapping>image_raw:=camera_right/image_raw</remapping>
+            <remapping>camera_info:=camera_right/camera_info</remapping>
+          </ros>
+          <frame_name>camera_right_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <joint name="camera_right_joint" type="fixed">
+      <parent>chassis</parent><child>camera_right_link</child>
+    </joint>
+
     <!-- ============== IMU ============== -->
     <link name="imu_link">
       <pose>0 0 0.5 0 0 0</pose>

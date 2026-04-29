@@ -68,16 +68,18 @@ class VisionNode(Node):
             )
 
         self.bridge = CvBridge() if CV_OK else None
-        self.latest_image = None
+
+        # Latest images from each camera (None until first frame arrives)
+        self.images = {
+            'front': None,
+            'left':  None,
+            'right': None,
+        }
         self.triggered = False
 
-        # Camera intrinsics (updated from /ego/camera/camera_info)
-        self.K = None
-        # Camera pose in world frame (set from known Gazebo pose)
-        # ego_hatchback camera_link: x=2.0, z=1.0, pitch=0.35 rad in chassis frame.
-        # Filled in later when we have full odom integration.
-
-        self.create_subscription(Image, '/ego/camera/image_raw', self._image_cb, 10)
+        self.create_subscription(Image, '/ego/camera/image_raw',       self._mk_image_cb('front'), 10)
+        self.create_subscription(Image, '/ego/camera_left/image_raw',  self._mk_image_cb('left'),  10)
+        self.create_subscription(Image, '/ego/camera_right/image_raw', self._mk_image_cb('right'), 10)
         self.create_subscription(CameraInfo, '/ego/camera/camera_info', self._info_cb, 1)
         self.create_subscription(Bool, '/parking/obs_trigger', self._trigger_cb, 10)
 
@@ -88,8 +90,10 @@ class VisionNode(Node):
 
     # ── callbacks ──────────────────────────────────────────────────────────
 
-    def _image_cb(self, msg):
-        self.latest_image = msg
+    def _mk_image_cb(self, key):
+        def _cb(msg):
+            self.images[key] = msg
+        return _cb
 
     def _info_cb(self, msg):
         if self.K is None:
@@ -107,33 +111,39 @@ class VisionNode(Node):
             return
         self.triggered = False
 
-        if self.model is not None and CV_OK and self.latest_image is not None:
-            self._run_yolo()
+        available = [k for k, v in self.images.items() if v is not None]
+        self.get_logger().info(f'Vision triggered — cameras available: {available}')
+
+        if self.model is not None and CV_OK and available:
+            self._run_yolo(available)
         else:
             self._publish_yaml_states()
 
     # ── YOLO detection ────────────────────────────────────────────────────
 
-    def _run_yolo(self):
-        """Run YOLOv8 on the latest image and match detections to slot ROIs."""
-        try:
-            cv_img = self.bridge.imgmsg_to_cv2(self.latest_image, 'bgr8')
-        except Exception as e:
-            self.get_logger().error(f'cv_bridge error: {e}')
-            self._publish_yaml_states()
-            return
-
-        results = self.model.predict(cv_img, conf=0.4, verbose=False)
+    def _run_yolo(self, camera_keys):
+        """Run YOLOv8 on all available camera images and merge detections."""
         detections = []
-        for r in results:
-            for box in r.boxes:
-                cls = int(box.cls[0])
-                cx = float((box.xyxy[0][0] + box.xyxy[0][2]) / 2)
-                cy = float((box.xyxy[0][1] + box.xyxy[0][3]) / 2)
-                detections.append({'cls': cls, 'cx_img': cx, 'cy_img': cy,
-                                   'conf': float(box.conf[0])})
+        for key in camera_keys:
+            msg = self.images[key]
+            if msg is None:
+                continue
+            try:
+                cv_img = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+            except Exception as e:
+                self.get_logger().error(f'cv_bridge error [{key}]: {e}')
+                continue
+            results = self.model.predict(cv_img, conf=0.4, verbose=False)
+            for r in results:
+                for box in r.boxes:
+                    cls = int(box.cls[0])
+                    cx = float((box.xyxy[0][0] + box.xyxy[0][2]) / 2)
+                    cy = float((box.xyxy[0][1] + box.xyxy[0][3]) / 2)
+                    detections.append({'cls': cls, 'cx_img': cx, 'cy_img': cy,
+                                       'conf': float(box.conf[0]),
+                                       'camera': key})
 
-        self.get_logger().info(f'YOLO: {len(detections)} detections')
+        self.get_logger().info(f'YOLO: {len(detections)} detections across {camera_keys}')
 
         # Update slot states from YOLO detections
         # (Full projection to world coords requires known robot pose —
