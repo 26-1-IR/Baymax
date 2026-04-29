@@ -22,7 +22,21 @@ source install/setup.bash
 ros2 launch autonomous_parking parking_sim.launch.py
 ```
 
-기본 실행은 시작 설정 GUI를 띄웁니다. GUI 없이 바로 실행하려면 `show_config_gui:=false`와 `user_credential:=general` 또는 `user_credential:=handicapped`를 함께 넘기면 됩니다.
+기본 실행에서는 시작 전에 설정 GUI가 열립니다. GUI에서 일반 슬롯 주차와 장애인 전용 슬롯 우선 배정 중 하나를 고를 수 있고, YOLOv8 `.pt` 모델 경로도 직접 입력하거나 파일 선택으로 지정할 수 있습니다. 모델 경로를 비워두면 `slot_metadata.yaml`의 메타데이터를 사용합니다.
+
+터미널에서 바로 조건을 넘기고 싶으면 GUI를 끄고 실행합니다.
+
+```bash
+ros2 launch autonomous_parking parking_sim.launch.py \
+  show_config_gui:=false \
+  user_credential:=general
+```
+
+```bash
+ros2 launch autonomous_parking parking_sim.launch.py \
+  show_config_gui:=false \
+  user_credential:=handicapped
+```
 
 월드만 확인할 때:
 

@@ -60,13 +60,21 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-전체 파이프라인 실행:
+전체 파이프라인은 아래 명령으로 실행합니다.
 
 ```bash
 ros2 launch autonomous_parking parking_sim.launch.py
 ```
 
-실행하면 먼저 설정 GUI가 열리고, 일반 슬롯 주차 또는 장애인 전용 슬롯 우선 배정을 선택할 수 있습니다. GUI 없이 바로 실행하려면 `show_config_gui:=false`를 사용합니다.
+실행하면 Gazebo가 바로 뜨기 전에 설정 창이 먼저 열립니다. 여기서 주차 조건을 고를 수 있습니다.
+
+- `일반 슬롯에 주차`: 일반 주차 가능한 빈 슬롯만 대상으로 선택
+- `장애인 전용 슬롯 우선`: 빈 장애인 전용 슬롯을 먼저 찾고, 없으면 다른 빈 슬롯 선택
+- `YOLOv8 모델 경로`: `.pt` 모델을 사용할 때 입력하거나 파일 선택 버튼으로 지정
+
+YOLO 모델 경로를 비워두면 `slot_metadata.yaml`에 있는 슬롯 정보와 초기 점유 상태를 사용합니다. 설정 창에서 `시작`을 누르면 선택한 조건으로 시뮬레이션이 실행되고, `취소`하거나 창을 닫으면 launch가 중단됩니다.
+
+GUI를 띄우지 않고 바로 실행하고 싶을 때는 `show_config_gui:=false`를 사용합니다.
 
 GUI 없이 일반 슬롯 주차:
 
@@ -90,6 +98,8 @@ YOLOv8 모델 사용:
 ros2 launch autonomous_parking parking_sim.launch.py \
   yolo_model:=/path/to/best.pt
 ```
+
+GUI를 켠 상태에서도 위처럼 `yolo_model`을 넘길 수 있고, 이 값은 설정 창의 기본 입력값으로 들어갑니다.
 
 Gazebo 월드만 확인:
 
