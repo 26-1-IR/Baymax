@@ -53,7 +53,7 @@ def generate_launch_description():
         # 1. Vision node — camera + YOLO (falls back to YAML if no model)
         Node(
             package='autonomous_parking',
-            executable='vision_node.py',
+            executable='vision_node',
             name='vision_node',
             output='screen',
             parameters=[{
@@ -65,7 +65,7 @@ def generate_launch_description():
         # 2. Decision node — credential-based slot selection
         Node(
             package='autonomous_parking',
-            executable='decision_node.py',
+            executable='decision_node',
             name='decision_node',
             output='screen',
             parameters=[{
@@ -77,7 +77,7 @@ def generate_launch_description():
         # 3. Parking controller — observation points + parking execution
         Node(
             package='autonomous_parking',
-            executable='parking_node.py',
+            executable='parking_node',
             name='parking_node',
             output='screen',
             parameters=[{'use_sim_time': True}],
