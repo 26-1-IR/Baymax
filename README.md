@@ -234,7 +234,7 @@ INIT → ENTER_LOT → OBS_DRIVE → OBS_YAW → OBS_WAIT → LANE_DRIVE → TUR
 
 ---
 
-## YOLO 학습 (김민정 담당)
+## YOLO 학습
 
 ```bash
 # 1. 의존성 설치

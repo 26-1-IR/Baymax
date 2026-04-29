@@ -26,5 +26,9 @@ datasets/
 *~
 .DS_Store
 
-# Project documentation
+# 수업 작업 지침 — 레포에 포함하지 않음
 CLAUDE.md
+
+# Python 가상환경
+.venv/
+venv/
