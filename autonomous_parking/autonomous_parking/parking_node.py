@@ -62,20 +62,21 @@ OBS_POINTS = [
 
 
 class ParkingNode(Node):
-    # 방지턱 y=±8.0m에 차 후방이 닿을 때의 차량 중심 y좌표.
-    # 차량 길이 4.2m → 중심에서 후방까지 2.1m.
-    PARK_Y_A =  5.9   # Row A — 북쪽 방지턱 접촉
-    PARK_Y_B = -5.9   # Row B — 남쪽 방지턱 접촉
+    # Gazebo 충돌 기준으로 wheel_stopper에 닿았을 때의 차량 중심 y좌표.
+    # 후방 LiDAR는 y=5.5대에서도 방지턱을 보기 때문에, 완료는 y 기준을 함께 본다.
+    PARK_Y_A =  5.85  # Row A — 북쪽 방지턱 접촉
+    PARK_Y_B = -5.85  # Row B — 남쪽 방지턱 접촉
 
     PARK_SPEED = 0.35   # 후진 주차 속도 (m/s)
     LANE_SPEED = 1.5    # 레인 주행 속도 (m/s)
 
-    # 후방 LiDAR는 차량 중심 근처에 있으므로 방지턱 접촉 시 약 2.1m가 된다.
-    STOPPER_LIDAR_DIST = 2.12  # 방지턱 접촉 판정 거리 (m)
+    # 후방 LiDAR는 차체 중심 높이에서 벽/방지턱을 일찍 볼 수 있으므로
+    # 단독 완료 조건으로 쓰지 않고, 접촉 y 근처에서만 보조 확인에 사용한다.
+    STOPPER_LIDAR_DIST = 2.12  # 방지턱 근접 판정 거리 (m)
     REAR_EMRG_DIST     = 0.3   # 비상 후방 감지 거리 (m)
     SIDE_STOP_DIST     = 0.3   # 측면 비상 장애물 감지 거리 (m)
     X_ALIGN_TOL        = 0.25  # LANE_DRIVE 이후 허용 x 정렬 오차 (m)
-    STOPPER_ZONE_MARGIN = 0.35 # 접촉 지점 근처에서만 LiDAR 완료 판정 허용 (m)
+    STOPPER_ZONE_MARGIN = 0.08 # 접촉 지점 근처에서만 LiDAR 완료 판정 허용 (m)
 
     OBS_WAIT_TIMEOUT = 10.0   # slot 선택 대기 timeout (초)
 
@@ -200,8 +201,8 @@ class ParkingNode(Node):
             return False
         row = self.target_slot['id'][0]
         if row == 'A':
-            return self.y >= self.PARK_Y_A - self.STOPPER_ZONE_MARGIN
-        return self.y <= self.PARK_Y_B + self.STOPPER_ZONE_MARGIN
+            return abs(self.y - self.PARK_Y_A) <= self.STOPPER_ZONE_MARGIN
+        return abs(self.y - self.PARK_Y_B) <= self.STOPPER_ZONE_MARGIN
 
     def _stopper_check_enabled(self):
         """차량 중심이 slot 입구 근처를 지난 뒤에만 방지턱 판정을 허용."""
@@ -247,6 +248,19 @@ class ParkingNode(Node):
             return False
         return (roi['x_min'] < self.x < roi['x_max'] and
                 roi['y_min'] < self.y < roi['y_max'])
+
+    def _complete_parking(self, reason):
+        sx = self.target_slot['center_x']
+        rear_dist = self._lidar_range(math.pi)
+        self._pub(0.0, 0.0)
+        self.get_logger().info(
+            f"주차 완료: {self.target_slot['id']} [{reason}] "
+            f"pos=({self.x:.2f},{self.y:.2f}) "
+            f"x_err={self.x - sx:.3f}m "
+            f"rear={rear_dist:.2f}m"
+        )
+        self._highlight_slot(self.target_slot, color='blue')
+        self.state = 'DONE'
 
     # ── Gazebo slot highlight ──────────────────────────────────────────────
 
@@ -371,6 +385,14 @@ class ParkingNode(Node):
                 self._stuck_last_pos = (self.x, self.y)
                 self._stuck_since = self.get_clock().now()
             elif (self.get_clock().now() - self._stuck_since).nanoseconds / 1e9 > 4.0:
+                if (
+                    self.state == 'PARK_REVERSE' and
+                    self.target_slot and
+                    self._in_slot_boundary() and
+                    self._near_stopper_contact_zone()
+                ):
+                    self._complete_parking('방지턱 접촉 정지')
+                    return
                 self.get_logger().error(
                     f'멈춤 감지: ({self.x:.2f},{self.y:.2f}) state={self.state} — DONE'
                 )
@@ -528,7 +550,8 @@ class ParkingNode(Node):
 
         # ── PARK_REVERSE ──────────────────────────────────────────────────
         # 후방 주차: 로봇이 slot 반대 방향을 바라보며 후진(lin < 0).
-        # 완료 조건: 방지턱 접촉. 단순 ROI/깊이만으로는 완료 처리하지 않는다.
+        # 완료 조건: 후륜이 방지턱 y 위치에 도달해야 한다.
+        # LiDAR는 벽/방지턱을 일찍 볼 수 있어 접촉 y 근처에서만 보조로 쓴다.
         elif self.state == 'PARK_REVERSE':
             row = self.target_slot['id'][0]
             park_y = self.PARK_Y_A if row == 'A' else self.PARK_Y_B
@@ -561,16 +584,8 @@ class ParkingNode(Node):
             in_roi = self._in_slot_boundary()
 
             if in_roi and (contact_y_ok or contact_lidar_ok):
-                self._pub(0.0, 0.0)
                 stop_reason = 'LiDAR 방지턱 접촉' if contact_lidar_ok else '방지턱 접촉 y 도달'
-                self.get_logger().info(
-                    f"주차 완료: {self.target_slot['id']} [{stop_reason}] "
-                    f"pos=({self.x:.2f},{self.y:.2f}) "
-                    f"x_err={self.x - sx:.3f}m "
-                    f"rear={rear_dist:.2f}m"
-                )
-                self._highlight_slot(self.target_slot, color='blue')
-                self.state = 'DONE'
+                self._complete_parking(stop_reason)
                 return
             elif contact_y_ok and not in_roi:
                 self._pub(0.0, 0.0)
@@ -608,7 +623,9 @@ class ParkingNode(Node):
             lat_sign = 1.0 if row == 'A' else -1.0
             lat_correction = max(-0.12, min(0.12, lat_sign * 0.5 * x_err))
             ang_correction = max(-0.25, min(0.25, 2.0 * yaw_err))
-            speed = self.PARK_SPEED if abs(yaw_err) < 0.12 else self.PARK_SPEED * 0.5
+            speed = min(self.PARK_SPEED, max(0.08, 0.8 * y_remaining))
+            if abs(yaw_err) >= 0.12:
+                speed *= 0.5
             self._pub(-speed, ang_correction, lat_correction)
 
         # ── DONE ──────────────────────────────────────────────────────────

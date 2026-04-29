@@ -33,6 +33,23 @@ def _normalize_credential(value):
     return 'general'
 
 
+def _pick_korean_font(tk_font):
+    candidates = (
+        'Noto Sans CJK KR',
+        'Noto Sans KR',
+        'NanumGothic',
+        'Nanum Gothic',
+        'UnDotum',
+        'Malgun Gothic',
+        'AppleGothic',
+    )
+    families = set(tk_font.families())
+    for candidate in candidates:
+        if candidate in families:
+            return candidate
+    return 'TkDefaultFont'
+
+
 def _show_config_gui(default_credential, default_yolo_model):
     config = {
         'user_credential': _normalize_credential(default_credential),
@@ -46,6 +63,7 @@ def _show_config_gui(default_credential, default_yolo_model):
 
     try:
         import tkinter as tk
+        import tkinter.font as tk_font
         from tkinter import filedialog, ttk
     except Exception as exc:
         print(f'[parking_sim] tkinter를 사용할 수 없어 설정 GUI를 건너뜁니다: {exc}')
@@ -56,13 +74,37 @@ def _show_config_gui(default_credential, default_yolo_model):
     root.resizable(False, False)
     root.configure(bg='#f5f5f5')
 
+    font_family = _pick_korean_font(tk_font)
+    default_font = (font_family, 10)
+    title_font = (font_family, 14, 'bold')
+    button_font = (font_family, 10, 'bold')
+
+    for font_name in (
+        'TkDefaultFont',
+        'TkTextFont',
+        'TkMenuFont',
+        'TkHeadingFont',
+        'TkCaptionFont',
+        'TkSmallCaptionFont',
+        'TkIconFont',
+        'TkTooltipFont',
+    ):
+        try:
+            tk_font.nametofont(font_name).configure(family=font_family)
+        except tk.TclError:
+            pass
+
     credential_var = tk.StringVar(value=config['user_credential'])
     yolo_var = tk.StringVar(value=config['yolo_model'])
 
     style = ttk.Style(root)
-    style.configure('Title.TLabel', font=('Sans', 14, 'bold'))
-    style.configure('Body.TLabel', font=('Sans', 10))
-    style.configure('Primary.TButton', font=('Sans', 10, 'bold'))
+    style.configure('TLabel', font=default_font)
+    style.configure('TButton', font=default_font)
+    style.configure('TRadiobutton', font=default_font)
+    style.configure('TLabelframe.Label', font=default_font)
+    style.configure('Title.TLabel', font=title_font)
+    style.configure('Body.TLabel', font=default_font)
+    style.configure('Primary.TButton', font=button_font)
 
     frame = ttk.Frame(root, padding=18)
     frame.grid(row=0, column=0, sticky='nsew')

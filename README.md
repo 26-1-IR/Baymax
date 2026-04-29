@@ -42,11 +42,13 @@ IL/
 │   ├── setup.py
 │   └── package.xml
 ├── build/                         # colcon 산출물
+├── docs/
+│   └── images/                    # README 이미지
 ├── install/                       # colcon 산출물
 └── log/                           # 빌드 로그
 ```
 
-`scripts/`의 구버전 복사본과 TurtleBot3용 런치 파일은 제거했습니다. 현재 실행 경로는 `ros2 run autonomous_parking <node>` 또는 `parking_sim.launch.py`입니다.
+현재 실행 경로는 `ros2 run autonomous_parking <node>` 또는 `parking_sim.launch.py`입니다.
 
 ---
 
@@ -60,21 +62,13 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-전체 파이프라인은 아래 명령으로 실행합니다.
+전체 파이프라인 실행:
 
 ```bash
 ros2 launch autonomous_parking parking_sim.launch.py
 ```
 
-실행하면 Gazebo가 바로 뜨기 전에 설정 창이 먼저 열립니다. 여기서 주차 조건을 고를 수 있습니다.
-
-- `일반 슬롯에 주차`: 일반 주차 가능한 빈 슬롯만 대상으로 선택
-- `장애인 전용 슬롯 우선`: 빈 장애인 전용 슬롯을 먼저 찾고, 없으면 다른 빈 슬롯 선택
-- `YOLOv8 모델 경로`: `.pt` 모델을 사용할 때 입력하거나 파일 선택 버튼으로 지정
-
-YOLO 모델 경로를 비워두면 `slot_metadata.yaml`에 있는 슬롯 정보와 초기 점유 상태를 사용합니다. 설정 창에서 `시작`을 누르면 선택한 조건으로 시뮬레이션이 실행되고, `취소`하거나 창을 닫으면 launch가 중단됩니다.
-
-GUI를 띄우지 않고 바로 실행하고 싶을 때는 `show_config_gui:=false`를 사용합니다.
+실행하면 먼저 설정 GUI가 열리고, 일반 슬롯 주차 또는 장애인 전용 슬롯 우선 배정을 선택할 수 있습니다. GUI 없이 바로 실행하려면 `show_config_gui:=false`를 사용합니다.
 
 GUI 없이 일반 슬롯 주차:
 
@@ -98,8 +92,6 @@ YOLOv8 모델 사용:
 ros2 launch autonomous_parking parking_sim.launch.py \
   yolo_model:=/path/to/best.pt
 ```
-
-GUI를 켠 상태에서도 위처럼 `yolo_model`을 넘길 수 있고, 이 값은 설정 창의 기본 입력값으로 들어갑니다.
 
 Gazebo 월드만 확인:
 
@@ -184,6 +176,29 @@ INIT → ENTER_LOT → OBS_DRIVE → OBS_WAIT
 
 ---
 
+## 노드/토픽 시각화
+
+실행 중인 노드와 토픽 연결 관계는 `rqt_graph`로 확인할 수 있습니다.
+
+```bash
+source ~/IL/install/setup.bash
+ros2 run rqt_graph rqt_graph
+```
+
+그래프가 복잡하면 `/rosout`, `/parameter_events` 같은 시스템 토픽을 숨기고, `Nodes only` 옵션은 끄면 노드 사이에 어떤 토픽이 오가는지 보기 쉽습니다.
+
+![rqt graph](docs/images/rqt_graph.png)
+
+터미널에서 토픽만 확인할 때는 아래 명령을 사용합니다.
+
+```bash
+ros2 topic list
+ros2 topic info /parking/target_slot
+ros2 topic echo /parking/target_slot
+```
+
+---
+
 ## 차량 및 센서
 
 `ego_hatchback`은 `/ego/cmd_vel`을 받는 planar 이동 차량 모델입니다. 후진 주차 단계에서는 `parking_node`가 `linear.x < 0`을 발행하고, Gazebo 플러그인이 이를 차량 기준 후진 속도로 적용합니다.
@@ -240,5 +255,5 @@ pkill -f gzclient
 
 ## 작성자
 
-- Yoonji Lee
-- Minjeong Kim
+- Yoonji Lee (yoonjileedev@gmail.com)
+- Minjeong Kim (laputais@ewhain.net)

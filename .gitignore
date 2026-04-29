@@ -27,6 +27,7 @@ datasets/
 .DS_Store
 
 CLAUDE.md
+.codex
 
 # Python 가상환경
 .venv/
