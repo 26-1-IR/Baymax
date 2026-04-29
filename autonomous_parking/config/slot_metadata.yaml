@@ -20,13 +20,11 @@ observation_points:
   - id: "obs_1"
     x: -5.0
     y: 0.0
-    yaw: 1.5708   # facing north (Row A)
-    description: "Left side observation - covers A1~A4, B1~B4"
+    description: "Left side observation - side cameras cover A1~A4, B1~B4"
   - id: "obs_2"
     x: 5.0
     y: 0.0
-    yaw: 1.5708   # facing north (Row A)
-    description: "Right side observation - covers A5~A8, B5~B8"
+    description: "Right side observation - side cameras cover A5~A8, B5~B8"
 
 # Robot spawn pose
 robot_spawn:

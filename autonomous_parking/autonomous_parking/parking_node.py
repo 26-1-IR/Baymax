@@ -4,13 +4,12 @@
 State machine:
   INIT         → 첫 odometry 대기
   ENTER_LOT    → 주차장 진입점(-10.5, 0.0)으로 이동
-  OBS_DRIVE    → 관측 포인트로 이동
-  OBS_YAW      → 관측 방향으로 회전
-  OBS_WAIT     → vision_node scan trigger → decision_node 목표 slot 대기
+  OBS_DRIVE    → 관측 포인트로 이동 후 vision_node scan trigger
+  OBS_WAIT     → decision_node 목표 slot 대기
   LANE_DRIVE   → y=0 차선을 따라 slot x 위치로 이동
   TURN_TO_SLOT → slot 방향(북/남)으로 회전
   X_ALIGN      → 회전 후 slot x 중심 정렬
-  PARK_FORWARD → slot으로 후진; 깊이+ROI 조건 또는 장애물 감지 시 정지
+  PARK_REVERSE → slot으로 후진; 깊이+ROI 조건 또는 장애물 감지 시 정지
   DONE         → 위치 유지
 
 발행 topic:
@@ -24,7 +23,6 @@ State machine:
 import math
 import os
 import yaml
-import json
 
 import rclpy
 from rclpy.node import Node
@@ -58,24 +56,26 @@ def quat_to_yaw(q):
 
 # slot_metadata.yaml 기준 관측 포인트
 OBS_POINTS = [
-    {'id': 'obs_1', 'x': -5.0, 'y': 0.0, 'yaw': math.pi / 2},  # 북향 (Row A 관측)
-    {'id': 'obs_2', 'x':  5.0, 'y': 0.0, 'yaw': math.pi / 2},
+    {'id': 'obs_1', 'x': -5.0, 'y': 0.0},
+    {'id': 'obs_2', 'x':  5.0, 'y': 0.0},
 ]
 
 
 class ParkingNode(Node):
-    # slot 완전 진입 시 차량 중심 목표 y좌표 (방지턱 y=±8.0m 기준)
-    PARK_Y_A =  5.7   # Row A — 북쪽
-    PARK_Y_B = -5.7   # Row B — 남쪽
+    # 방지턱 y=±8.0m에 차 후방이 닿을 때의 차량 중심 y좌표.
+    # 차량 길이 4.2m → 중심에서 후방까지 2.1m.
+    PARK_Y_A =  5.9   # Row A — 북쪽 방지턱 접촉
+    PARK_Y_B = -5.9   # Row B — 남쪽 방지턱 접촉
 
     PARK_SPEED = 0.35   # 후진 주차 속도 (m/s)
     LANE_SPEED = 1.5    # 레인 주행 속도 (m/s)
 
-    # 방지턱 y=±8.0m, 차 후방에서 방지턱까지 LiDAR 거리 임계값
-    # car_rear = center + 2.1m → 방지턱 0.3m 여유 → 2.1 + 0.3 = 2.4m
-    STOPPER_LIDAR_DIST = 2.4   # 후방 LiDAR에서 방지턱까지 허용 거리 (m)
+    # 후방 LiDAR는 차량 중심 근처에 있으므로 방지턱 접촉 시 약 2.1m가 된다.
+    STOPPER_LIDAR_DIST = 2.12  # 방지턱 접촉 판정 거리 (m)
     REAR_EMRG_DIST     = 0.3   # 비상 후방 감지 거리 (m)
-    SIDE_STOP_DIST     = 0.7   # 측면 장애물 감지 거리 (m)
+    SIDE_STOP_DIST     = 0.3   # 측면 비상 장애물 감지 거리 (m)
+    X_ALIGN_TOL        = 0.25  # LANE_DRIVE 이후 허용 x 정렬 오차 (m)
+    STOPPER_ZONE_MARGIN = 0.35 # 접촉 지점 근처에서만 LiDAR 완료 판정 허용 (m)
 
     OBS_WAIT_TIMEOUT = 10.0   # slot 선택 대기 timeout (초)
 
@@ -103,7 +103,7 @@ class ParkingNode(Node):
         self.obs_idx = 0          # OBS_POINTS 인덱스
         self.obs_wait_start = None
         self.received_target = False
-        self._last_cmd = (0.0, 0.0)
+        self._last_cmd = (0.0, 0.0, 0.0)
 
         # Publisher
         self.cmd_pub = self.create_publisher(Twist, '/ego/cmd_vel', 10)
@@ -145,7 +145,7 @@ class ParkingNode(Node):
     # LANE_DRIVE 이후에는 이미 주행 중인 slot을 덮어쓰지 않도록
     # decision_node의 target slot을 수신할 수 있는 state 목록
     _RECEPTIVE_STATES = frozenset({
-        'INIT', 'ENTER_LOT', 'OBS_DRIVE', 'OBS_YAW', 'OBS_WAIT'
+        'INIT', 'ENTER_LOT', 'OBS_DRIVE', 'OBS_WAIT'
     })
 
     def _target_cb(self, msg):
@@ -180,16 +180,45 @@ class ParkingNode(Node):
         return float('inf') if (math.isnan(r) or math.isinf(r)) else r
 
     def _stopper_reached(self):
-        """후방 LiDAR가 STOPPER_LIDAR_DIST 이하에서 방지턱을 감지하면 True.
-
-        방지턱 반사체(z=1.45m)가 수평 scan에 반사되면 거리가 줄어든다.
-        2.4m 이하 = 차 후방이 방지턱에서 0.3m 앞에 위치한 시점.
-        """
+        """후방 LiDAR가 접촉 거리에서 방지턱을 감지하면 True."""
         for deg in range(-6, 7, 2):
             r = self._lidar_range(math.pi + math.radians(deg))
             if r < self.STOPPER_LIDAR_DIST:
                 return True
         return False
+
+    def _stopper_contact_y_reached(self):
+        """차량 중심이 방지턱 접촉 y좌표에 도달했으면 True."""
+        if not self.target_slot:
+            return False
+        row = self.target_slot['id'][0]
+        return self.y >= self.PARK_Y_A if row == 'A' else self.y <= self.PARK_Y_B
+
+    def _near_stopper_contact_zone(self):
+        """LiDAR 접촉 완료를 믿을 수 있는 방지턱 근처 영역."""
+        if not self.target_slot:
+            return False
+        row = self.target_slot['id'][0]
+        if row == 'A':
+            return self.y >= self.PARK_Y_A - self.STOPPER_ZONE_MARGIN
+        return self.y <= self.PARK_Y_B + self.STOPPER_ZONE_MARGIN
+
+    def _stopper_check_enabled(self):
+        """차량 중심이 slot 입구 근처를 지난 뒤에만 방지턱 판정을 허용."""
+        if not self.target_slot:
+            return False
+        roi = self.target_slot.get('roi')
+        if not roi:
+            return False
+        row = self.target_slot['id'][0]
+        margin = 0.3
+        if row == 'A':
+            return self.y >= roi['y_min'] - margin
+        return self.y <= roi['y_max'] + margin
+
+    def _side_check_enabled(self):
+        """slot 안쪽에 진입한 뒤에만 측면 장애물 판정을 허용."""
+        return self._stopper_check_enabled()
 
     def _rear_emergency(self):
         """후방에 REAR_EMRG_DIST 이하의 예상치 못한 장애물이 있으면 True."""
@@ -285,12 +314,13 @@ class ParkingNode(Node):
             lin *= 0.5
         return lin, ang, False
 
-    def _pub(self, lin, ang):
+    def _pub(self, lin, ang, lat=0.0):
         t = Twist()
         t.linear.x = float(lin)
+        t.linear.y = float(lat)
         t.angular.z = float(ang)
         self.cmd_pub.publish(t)
-        self._last_cmd = (lin, ang)
+        self._last_cmd = (lin, lat, ang)
 
     def _log_status(self):
         if not self.odom_ok:
@@ -299,7 +329,11 @@ class ParkingNode(Node):
         left = self._lidar_range(math.pi / 2)
         right= self._lidar_range(-math.pi / 2)
         rear = self._lidar_range(math.pi)
-        lin, ang = getattr(self, '_last_cmd', (0.0, 0.0))
+        last_cmd = getattr(self, '_last_cmd', (0.0, 0.0, 0.0))
+        if len(last_cmd) == 2:
+            lin, lat, ang = last_cmd[0], 0.0, last_cmd[1]
+        else:
+            lin, lat, ang = last_cmd
 
         target_info = ''
         if self.target_slot:
@@ -314,7 +348,7 @@ class ParkingNode(Node):
         self.get_logger().info(
             f"[{self.state}] "
             f"pos=({self.x:.2f},{self.y:.2f}) yaw={math.degrees(self.yaw):.1f}deg "
-            f"cmd=lin:{lin:.2f} ang:{ang:.2f} "
+            f"cmd=lin:{lin:.2f} lat:{lat:.2f} ang:{ang:.2f} "
             f"lidar F:{fwd:.2f} L:{left:.2f} R:{right:.2f} B:{rear:.2f}"
             + target_info
         )
@@ -365,41 +399,22 @@ class ParkingNode(Node):
                 self._pub(lin, ang)
 
         # ── OBS_DRIVE ─────────────────────────────────────────────────────
-        # 위치 이동만 수행 (tol=0.6m). 방향 정렬은 OBS_YAW에서 별도 처리.
-        # 회전 중 위치 drift가 내비게이션을 재트리거하지 않도록 분리.
+        # 양쪽 카메라가 슬롯 열을 커버하므로 관측 yaw 회전 없이 바로 스캔한다.
         elif self.state == 'OBS_DRIVE':
             obs = OBS_POINTS[self.obs_idx]
             lin, ang, done = self._goto(obs['x'], obs['y'], tol=0.6)
             if done:
                 self._pub(0.0, 0.0)
                 self.get_logger().info(
-                    f"OBS_DRIVE 완료 — pos=({self.x:.2f},{self.y:.2f}) → OBS_YAW"
-                )
-                self.state = 'OBS_YAW'
-            else:
-                self._pub(lin, ang)
-
-        # ── OBS_YAW ───────────────────────────────────────────────────────
-        # 관측 방향으로의 제자리 회전. 회전 중 위치 drift는 허용.
-        elif self.state == 'OBS_YAW':
-            obs = OBS_POINTS[self.obs_idx]
-            yaw_err = angle_diff(obs['yaw'], self.yaw)
-            if abs(yaw_err) < 0.08:
-                self._pub(0.0, 0.0)
-                self.get_logger().info(
-                    f"OBS_YAW 완료 — pos=({self.x:.2f},{self.y:.2f}) "
-                    f"yaw={math.degrees(self.yaw):.1f}deg — vision scan trigger"
+                    f"OBS_DRIVE 완료 — pos=({self.x:.2f},{self.y:.2f}) "
+                    "— vision scan trigger"
                 )
                 self._fire_obs_trigger()
                 self.obs_wait_start = self.get_clock().now()
                 self.received_target = False
                 self.state = 'OBS_WAIT'
             else:
-                ang = max(-1.2, min(1.2, 2.5 * yaw_err))
-                self.get_logger().debug(
-                    f"OBS_YAW: err={math.degrees(yaw_err):.1f}deg ang={ang:.2f}"
-                )
-                self._pub(0.0, ang)
+                self._pub(lin, ang)
 
         # ── OBS_WAIT ──────────────────────────────────────────────────────
         # decision_node의 slot 선택 결과 대기.
@@ -481,45 +496,53 @@ class ParkingNode(Node):
                 self._pub(0.0, ang)
 
         # ── X_ALIGN ───────────────────────────────────────────────────────
-        # slot 반대 방향을 바라본 상태에서 후진으로 x를 정렬.
-        # Row A (남향 -π/2, 후진→북): 동쪽 drift 시 angular.z < 0 → sign = -1
-        # Row B (북향 +π/2, 후진→남): 동쪽 drift 시 angular.z > 0 → sign = +1
+        # LANE_DRIVE에서 이미 slot 중심 x까지 접근했으므로 여기서는 검증만 한다.
+        # 후진하면서 x를 맞추려고 회전하면 yaw가 틀어져 slot 진입 각도가 깨진다.
         elif self.state == 'X_ALIGN':
-            row = self.target_slot['id'][0]
-            ang_sign = -1.0 if row == 'A' else 1.0
             sx = self.target_slot['center_x']
             x_err = sx - self.x
-            if abs(x_err) < 0.12:
+            yaw_err = angle_diff(self.slot_target_yaw, self.yaw)
+
+            if abs(yaw_err) > 0.08:
+                ang = max(-0.8, min(0.8, 2.0 * yaw_err))
+                self._pub(0.0, ang)
+                return
+
+            if abs(x_err) < self.X_ALIGN_TOL:
                 self._pub(0.0, 0.0)
                 self.get_logger().info(
                     f"X_ALIGN 완료 — x_err={x_err:.3f}m "
-                    f"pos=({self.x:.2f},{self.y:.2f}) → PARK_FORWARD"
+                    f"pos=({self.x:.2f},{self.y:.2f}) → PARK_REVERSE"
                 )
-                self.state = 'PARK_FORWARD'
+                self.state = 'PARK_REVERSE'
                 self._stuck_last_pos = (self.x, self.y)
                 self._stuck_since = self.get_clock().now()
             else:
-                ang = max(-0.6, min(0.6, ang_sign * x_err))
-                self.get_logger().debug(
-                    f"X_ALIGN 후진 보정: x_err={x_err:.3f}m ang={ang:.2f} "
-                    f"(row {row}, sign={ang_sign:+.0f})"
+                self._pub(0.0, 0.0)
+                self.get_logger().warn(
+                    f"X_ALIGN 오차 큼 — x_err={x_err:.3f}m, LANE_DRIVE 재시도"
                 )
-                self._pub(-0.15, ang)
+                self.state = 'LANE_DRIVE'
+                self._stuck_last_pos = (self.x, self.y)
+                self._stuck_since = self.get_clock().now()
 
-        # ── PARK_FORWARD ──────────────────────────────────────────────────
+        # ── PARK_REVERSE ──────────────────────────────────────────────────
         # 후방 주차: 로봇이 slot 반대 방향을 바라보며 후진(lin < 0).
-        # 완료 조건: 목표 깊이 도달 AND slot ROI 내부 진입 (또는 방지턱 감지).
-        elif self.state == 'PARK_FORWARD':
+        # 완료 조건: 방지턱 접촉. 단순 ROI/깊이만으로는 완료 처리하지 않는다.
+        elif self.state == 'PARK_REVERSE':
             row = self.target_slot['id'][0]
             park_y = self.PARK_Y_A if row == 'A' else self.PARK_Y_B
             sx = self.target_slot['center_x']
 
-            stopper_now = self._stopper_reached()
-            sides_now   = self._sides_clear()
+            stopper_enabled = self._stopper_check_enabled()
+            stopper_now = stopper_enabled and self._stopper_reached()
+            side_enabled = self._side_check_enabled()
+            sides_now   = (not side_enabled) or self._sides_clear()
             rear_emrg   = self._rear_emergency()
             self.get_logger().debug(
-                f"PARK_FWD: pos=({self.x:.2f},{self.y:.2f}) yaw={math.degrees(self.yaw):.1f}deg "
-                f"stopper={stopper_now} sides_ok={sides_now} rear_emrg={rear_emrg}"
+                f"PARK_REV: pos=({self.x:.2f},{self.y:.2f}) yaw={math.degrees(self.yaw):.1f}deg "
+                f"stopper={stopper_now} stopper_enabled={stopper_enabled} "
+                f"sides_ok={sides_now} side_enabled={side_enabled} rear_emrg={rear_emrg}"
             )
 
             y_remaining = abs(park_y - self.y)
@@ -533,18 +556,13 @@ class ParkingNode(Node):
                 f"x_err={self.x - sx:.3f}m in_slot={self._in_slot_boundary()}"
             )
 
-            # 멈춤 판정 (우선순위 순)
-            # 1순위: LiDAR 방지턱 감지
-            stopper_hit = self._stopper_reached()
-            # 2순위: 목표 깊이 도달 여부
-            depth_ok = (row == 'A' and self.y >= park_y) or \
-                       (row == 'B' and self.y <= park_y)
-            # 3순위: slot ROI 내부 진입 확인
+            contact_y_ok = self._stopper_contact_y_reached()
+            contact_lidar_ok = stopper_now and self._near_stopper_contact_zone()
             in_roi = self._in_slot_boundary()
 
-            if stopper_hit or (depth_ok and in_roi):
+            if in_roi and (contact_y_ok or contact_lidar_ok):
                 self._pub(0.0, 0.0)
-                stop_reason = 'LiDAR 방지턱 감지' if stopper_hit else '목표 깊이 도달'
+                stop_reason = 'LiDAR 방지턱 접촉' if contact_lidar_ok else '방지턱 접촉 y 도달'
                 self.get_logger().info(
                     f"주차 완료: {self.target_slot['id']} [{stop_reason}] "
                     f"pos=({self.x:.2f},{self.y:.2f}) "
@@ -554,10 +572,10 @@ class ParkingNode(Node):
                 self._highlight_slot(self.target_slot, color='blue')
                 self.state = 'DONE'
                 return
-            elif depth_ok and not in_roi:
+            elif contact_y_ok and not in_roi:
                 self._pub(0.0, 0.0)
                 self.get_logger().warn(
-                    f"목표 깊이 도달했으나 ROI 밖 — pos=({self.x:.2f},{self.y:.2f}) "
+                    f"방지턱 접촉 y에 도달했으나 ROI 밖 — pos=({self.x:.2f},{self.y:.2f}) "
                     f"x_err={self.x - sx:.3f}m — 정지"
                 )
                 self._highlight_slot(self.target_slot, color='blue')
@@ -574,7 +592,7 @@ class ParkingNode(Node):
                 return
 
             # 측면 충돌 방지 (인접 주차 차량)
-            if not self._sides_clear():
+            if side_enabled and not sides_now:
                 self._pub(0.0, 0.0)
                 self.get_logger().warn(
                     f"측면 장애물 — L={left_dist:.2f}m R={right_dist:.2f}m — slot 포기"
@@ -583,13 +601,15 @@ class ParkingNode(Node):
                 self._replan()
                 return
 
-            # 후진 중 slot 중심 x 정렬 유지
-            # Row A (남향, 후진→북): ang_sign = -1
-            # Row B (북향, 후진→남): ang_sign = +1
-            ang_sign = -1.0 if row == 'A' else 1.0
+            # 후진 중에는 yaw를 slot 방향에 고정해 방지턱에 수직으로 접근한다.
+            # x 오차는 planar_move의 lateral 속도로 작게 보정해 yaw를 비틀지 않는다.
             x_err = sx - self.x
-            ang_correction = max(-0.3, min(0.3, ang_sign * 0.6 * x_err))
-            self._pub(-self.PARK_SPEED, ang_correction)
+            yaw_err = angle_diff(self.slot_target_yaw, self.yaw)
+            lat_sign = 1.0 if row == 'A' else -1.0
+            lat_correction = max(-0.12, min(0.12, lat_sign * 0.5 * x_err))
+            ang_correction = max(-0.25, min(0.25, 2.0 * yaw_err))
+            speed = self.PARK_SPEED if abs(yaw_err) < 0.12 else self.PARK_SPEED * 0.5
+            self._pub(-speed, ang_correction, lat_correction)
 
         # ── DONE ──────────────────────────────────────────────────────────
         elif self.state == 'DONE':
@@ -629,9 +649,14 @@ class ParkingNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ParkingNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

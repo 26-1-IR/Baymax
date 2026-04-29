@@ -25,15 +25,15 @@
         <geometry>
           <mesh>
             <scale>0.0254 0.0254 0.0254</scale>
-            <uri>model://hatchback/meshes/hatchback.obj</uri>
+            <uri>model://ego_hatchback/meshes/hatchback.obj</uri>
           </mesh>
         </geometry>
       </visual>
     </link>
 
     <!-- ============== WHEELS (link는 안 눕힘, visual만 회전) ============== -->
-    <!-- Front wheels: low mu2 (lateral) so the car can rotate in place.
-         Passive (non-driven) wheels act like casters for diff-drive. -->
+    <!-- Wheels are visual/physical details; planar_move applies cmd_vel to
+         the model directly for stable parking-controller behavior. -->
     <link name="wheel_fl">
       <pose>1.3 0.85 0.3 0 0 0</pose>
       <inertial>
@@ -107,6 +107,9 @@
     </link>
 
     <!-- ============== JOINTS (axis: Y = 좌우 방향) ============== -->
+    <!-- The wheel cylinders are laid on their Y axis. This sign makes
+         +linear.x move toward chassis +X, so the entry drive goes into
+         the parking lot and -linear.x remains reverse. -->
     <joint name="wheel_fl_joint" type="revolute">
       <parent>chassis</parent><child>wheel_fl</child>
       <axis>
@@ -332,27 +335,27 @@
       <parent>chassis</parent><child>imu_link</child>
     </joint>
 
-    <!-- ============== DIFF DRIVE (뒷바퀴 구동) ============== -->
-    <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
-      <ros><namespace>/ego</namespace></ros>
+    <!-- ============== PLANAR MOVE ============== -->
+    <!-- Direct planar velocity control keeps cmd_vel semantics deterministic
+         for the parking state machine. The physical wheel visuals remain for
+         appearance, but odom and motion are driven from /ego/cmd_vel. -->
+    <plugin name="planar_move" filename="libgazebo_ros_planar_move.so">
+      <ros>
+        <namespace>/ego</namespace>
+      </ros>
 
-      <left_joint>wheel_rl_joint</left_joint>
-      <right_joint>wheel_rr_joint</right_joint>
+      <update_rate>100</update_rate>
+      <publish_rate>20</publish_rate>
 
-      <wheel_separation>1.7</wheel_separation>
-      <wheel_diameter>0.6</wheel_diameter>
-
-      <max_wheel_torque>200</max_wheel_torque>
-      <max_wheel_acceleration>3.0</max_wheel_acceleration>
-
-      <command_topic>cmd_vel</command_topic>
       <publish_odom>true</publish_odom>
       <publish_odom_tf>true</publish_odom_tf>
-      <publish_wheel_tf>false</publish_wheel_tf>
 
-      <odometry_topic>odom</odometry_topic>
       <odometry_frame>odom</odometry_frame>
       <robot_base_frame>chassis</robot_base_frame>
+
+      <covariance_x>0.0001</covariance_x>
+      <covariance_y>0.0001</covariance_y>
+      <covariance_yaw>0.01</covariance_yaw>
     </plugin>
   </model>
 </sdf>

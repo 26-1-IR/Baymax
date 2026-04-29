@@ -7,12 +7,22 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _env_path(var_name, *paths):
+    entries = [p for p in os.environ.get(var_name, '').split(os.pathsep) if p]
+    for path in paths:
+        if path and path not in entries:
+            entries.append(path)
+    return os.pathsep.join(entries)
+
+
 def generate_launch_description():
     pkg_dir = get_package_share_directory('autonomous_parking')
     gazebo_ros_dir = get_package_share_directory('gazebo_ros')
 
     world_file = os.path.join(pkg_dir, 'worlds', 'parking_lot.world')
     models_path = os.path.join(pkg_dir, 'models')
+    gazebo_model_path = '/usr/share/gazebo-11/models'
+    gazebo_resource_path = '/usr/share/gazebo-11'
 
     # user_credential: 'general' (default) or 'handicapped'
     credential_arg = DeclareLaunchArgument(
@@ -35,11 +45,11 @@ def generate_launch_description():
         # Gazebo model & resource paths
         SetEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
-            f"{os.environ.get('GAZEBO_MODEL_PATH', '')}:{models_path}",
+            _env_path('GAZEBO_MODEL_PATH', gazebo_model_path, models_path),
         ),
         SetEnvironmentVariable(
             'GAZEBO_RESOURCE_PATH',
-            f"{os.environ.get('GAZEBO_RESOURCE_PATH', '')}:{pkg_dir}",
+            _env_path('GAZEBO_RESOURCE_PATH', gazebo_resource_path, pkg_dir),
         ),
 
         # Gazebo with parking lot world (ego_hatchback included in world)

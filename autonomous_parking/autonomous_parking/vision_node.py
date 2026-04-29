@@ -4,14 +4,12 @@
 파이프라인:
   1. 전방/좌측/우측 camera image 구독
   2. 관측 trigger(/parking/obs_trigger, Bool=True) 수신 시:
-       - LiDAR scan으로 각 slot의 점유 여부 판단
        - YOLO model이 있으면 ISA mark(장애인 마크) 감지로 slot 유형 보정
-       - model 없으면 YAML 메타데이터 유형을 그대로 사용
+       - model 없으면 YAML 메타데이터의 slot 유형과 점유 상태를 그대로 사용
   3. /parking/slot_states (std_msgs/String, JSON) 발행
 
 YOLO class:
   0 = 'isa_mark' - 장애인 전용 마크 → slot 유형을 handicapped로 변경
-  (점유 여부는 LiDAR로 판단하므로 vehicle class 불필요)
 
 LiDAR 점유 판단:
   관측 포인트에서 각 slot 방향의 LiDAR 거리를 측정한다.
@@ -26,13 +24,11 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool
-from sensor_msgs.msg import Image, CameraInfo, LaserScan
+from sensor_msgs.msg import Image, LaserScan
 from nav_msgs.msg import Odometry
 from ament_index_python.packages import get_package_share_directory
 
 try:
-    import cv2
-    import numpy as np
     from cv_bridge import CvBridge
     CV_OK = True
 except ImportError:
@@ -67,7 +63,7 @@ class VisionNode(Node):
         else:
             self.get_logger().warn(
                 'YOLOv8 model 없음 — slot 유형은 YAML 메타데이터 사용. '
-                '점유 여부는 LiDAR로 판단.'
+                '점유 여부도 YAML 메타데이터 사용.'
             )
 
         self.bridge = CvBridge() if CV_OK else None
@@ -137,11 +133,15 @@ class VisionNode(Node):
         available = [k for k, v in self.images.items() if v is not None]
         self.get_logger().info(f'Vision trigger — 사용 가능 camera: {available}')
 
+        if self.model is None:
+            self._publish(self.slots)
+            return
+
         # 1단계: LiDAR로 점유 여부 갱신
         self._check_occupancy_lidar()
 
         # 2단계: YOLO로 ISA mark 감지 → slot 유형 보정
-        if self.model is not None and CV_OK and available:
+        if CV_OK and available:
             self._run_yolo(available)
         else:
             self._publish(self.slots)
@@ -259,9 +259,14 @@ class VisionNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = VisionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
