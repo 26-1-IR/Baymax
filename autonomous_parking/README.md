@@ -12,7 +12,6 @@ ROS 2 Humble `ament_python` 기반 자율 주차 패키지입니다. 루트 [REA
 | `vision_node` | `autonomous_parking/vision_node.py` |
 | `decision_node` | `autonomous_parking/decision_node.py` |
 
-구버전 `scripts/` 복사본은 제거했습니다.
 
 ## 실행
 
@@ -20,8 +19,10 @@ ROS 2 Humble `ament_python` 기반 자율 주차 패키지입니다. 루트 [REA
 cd ~/IL
 colcon build --symlink-install
 source install/setup.bash
-ros2 launch autonomous_parking parking_sim.launch.py user_credential:=general
+ros2 launch autonomous_parking parking_sim.launch.py
 ```
+
+기본 실행은 시작 설정 GUI를 띄웁니다. GUI 없이 바로 실행하려면 `show_config_gui:=false`와 `user_credential:=general` 또는 `user_credential:=handicapped`를 함께 넘기면 됩니다.
 
 월드만 확인할 때:
 

@@ -63,20 +63,31 @@ source install/setup.bash
 전체 파이프라인 실행:
 
 ```bash
-ros2 launch autonomous_parking parking_sim.launch.py user_credential:=general
+ros2 launch autonomous_parking parking_sim.launch.py
 ```
 
-장애인 전용 슬롯 우선 배정:
+실행하면 먼저 설정 GUI가 열리고, 일반 슬롯 주차 또는 장애인 전용 슬롯 우선 배정을 선택할 수 있습니다. GUI 없이 바로 실행하려면 `show_config_gui:=false`를 사용합니다.
+
+GUI 없이 일반 슬롯 주차:
 
 ```bash
-ros2 launch autonomous_parking parking_sim.launch.py user_credential:=handicapped
+ros2 launch autonomous_parking parking_sim.launch.py \
+  show_config_gui:=false \
+  user_credential:=general
+```
+
+GUI 없이 장애인 전용 슬롯 우선 배정:
+
+```bash
+ros2 launch autonomous_parking parking_sim.launch.py \
+  show_config_gui:=false \
+  user_credential:=handicapped
 ```
 
 YOLOv8 모델 사용:
 
 ```bash
 ros2 launch autonomous_parking parking_sim.launch.py \
-  user_credential:=general \
   yolo_model:=/path/to/best.pt
 ```
 
@@ -94,6 +105,7 @@ ros2 launch autonomous_parking world_only.launch.py
 |------|--------|------|
 | `user_credential` | `general` | `general` 또는 `handicapped` |
 | `yolo_model` | `""` | YOLOv8 `.pt` 경로. 비어 있으면 YAML 메타데이터 사용 |
+| `show_config_gui` | `true` | 실행 전 설정 GUI 표시 여부 |
 
 ---
 
